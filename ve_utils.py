@@ -4,6 +4,7 @@ from traceback import print_exc
 from os import _exit as os_exit
 from os import statvfs
 import logging
+import dbus
 logger = logging.getLogger(__name__)
 
 # Use this function to make sure the code quits on an unexpected exception. Make sure to use it
@@ -121,3 +122,46 @@ def read_file(path):
 		logger.info("Error while reading %s: %s" % (path, ex))
 
 	return content
+
+
+def wrap_dbus_value(value):
+	if value == None:
+		return VeDbusInvalid
+	if isinstance(value, float):
+		return dbus.Double(value, variant_level=1)
+	if isinstance(value, bool):
+		return dbus.Boolean(value, variant_level=1)
+	if isinstance(value, int):
+		return dbus.Int32(value, variant_level=1)
+	if isinstance(value, str):
+		return dbus.String(value, variant_level=1)
+	if isinstance(value, list):
+		return dbus.Array([wrap_dbus_value(x) for x in value], variant_level=1)
+	if isinstance(value, long):
+		return dbus.Int64(value, variant_level=1)
+	if isinstance(value, dict):
+		return dbus.Dictionary({(wrap_dbus_value(k), wrap_dbus_value(v)) for k,v in value.items()}, variant_level=1)
+	return value
+
+
+def unwrap_dbus_value(val):
+	"""Converts D-Bus values back to the original type. For example if val is of type DBus.Double,
+	a float will be returned."""
+	if isinstance(val, dbus.Double):
+		return float(val)
+	if isinstance(val, (dbus.Byte, dbus.Int16, dbus.UInt16, dbus.Int32, dbus.UInt32, dbus.Int64, dbus.UInt64)):
+		return int(val)
+	if isinstance(val, dbus.Array):
+		v = [unwrap_dbus_value(x) for x in val]
+		return None if len(v) == 0 else v
+	if isinstance(val, (dbus.Signature, dbus.String)):
+		return unicode(val)
+	if isinstance(val, dbus.ByteArray):
+		return "".join([str(x) for x in val])
+	if isinstance(val, (list, tuple)):
+		return [unwrap_dbus_value(x) for x in val]
+	if isinstance(val, (dbus.Dictionary, dict)):
+		return dict([(unwrap_dbus_value(x), unwrap_dbus_value(y)) for x,y in val.items()])
+	if isinstance(val, dbus.Boolean):
+		return bool(val)
+	return val
