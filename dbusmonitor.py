@@ -26,7 +26,6 @@ import argparse
 import pprint
 import traceback
 import os
-from functools import partial
 
 # our own packages
 from vedbus import VeDbusItemExport, VeDbusItemImport
@@ -111,12 +110,6 @@ class DbusMonitor(object):
 			if self.deviceRemovedCallback is not None:
 				self.deviceRemovedCallback(name, i)
 
-	def _set_value_callback(self, serviceId, path, options, value):
-		self.serviceIds[serviceId]['paths'][path] = [unwrap_dbus_value(value), options]
-
-	def _set_value_error(self, serviceId, path, options, *args):
-		self.serviceIds[serviceId]['paths'][path] = [None, options]
-
 	# Scans the given dbus service to see if it contains anything interesting for us. If it does, add
 	# it to our list of monitored D-Bus services.
 	def scan_dbus_service(self, serviceName):
@@ -170,14 +163,13 @@ class DbusMonitor(object):
 				assert options['whenToLog'] is None or options['whenToLog'] in whentologoptions
 
 				try:
-					self.dbusConn.call_async(serviceName, path, None, 'GetValue', '', [],
-							partial(self._set_value_callback, serviceId, path, options),
-							partial(self._set_value_error, serviceId, path, options))
+					value = self.dbusConn.call_blocking(serviceName, path, None, 'GetValue', '', [])
 				except dbus.exceptions.DBusException as e:
 					# TODO: Look into this, perhaps filter more specifically on this error:
 					# org.freedesktop.DBus.Error.UnknownMethod
 					logger.debug("%s %s does not exist (yet)" % (serviceName, path))
-					self.serviceIds[serviceId]['paths'][path] = [None, options]
+					value = None
+				self.serviceIds[serviceId]['paths'][path] = [unwrap_dbus_value(value), options]
 
 				if options['whenToLog']:
 					service[options['whenToLog']].append(path)
@@ -289,10 +281,7 @@ class DbusMonitor(object):
 
 			for path in service[category]:
 
-				try:
-					value, options = self.serviceIds[service['serviceId']]['paths'][path]
-				except KeyError:
-					value = options = None
+				value, options = self.serviceIds[service['serviceId']]['paths'][path]
 
 				if value is not None:
 
