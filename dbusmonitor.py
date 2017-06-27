@@ -70,8 +70,8 @@ class DbusMonitor(object):
 		self.dbusConn = SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
 
 		# subscribe to NameOwnerChange for bus connect / disconnect events.
-		(dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ \
-			else dbus.SystemBus()).add_signal_receiver(
+		(SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ \
+			else SystemBus()).add_signal_receiver(
 			self.dbus_name_owner_changed,
 			signal_name='NameOwnerChanged')
 
