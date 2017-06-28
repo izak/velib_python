@@ -64,6 +64,12 @@ class DbusMonitor(object):
 		# subscribe to NameOwnerChange for bus connect / disconnect events.
 		self.dbusConn.add_signal_receiver(self.dbus_name_owner_changed, signal_name='NameOwnerChanged')
 
+		# Subscribe to PropertiesChanged for all services
+		self.dbusConn.add_signal_receiver(self.handler_value_changes,
+			dbus_interface='com.victronenergy.BusItem',
+			signal_name='PropertiesChanged', path_keyword='path',
+			sender_keyword='senderId')
+
 		logger.info('===== Search on dbus for services that we will monitor starting... =====')
 		serviceNames = self.dbusConn.list_names()
 		for serviceName in serviceNames:
@@ -125,8 +131,6 @@ class DbusMonitor(object):
 		service['serviceId'] = serviceId
 		self.serviceIds[serviceId] = {'name': serviceName, 'paths': {}}
 
-		service_id_dict = self.serviceIds[serviceId]
-
 		try:
 			# for vebus.ttyO1, this is workaround, since VRM Portal expects the main vebus devices at
 			# instance 0. Not sure how to fix this yet.
@@ -154,17 +158,12 @@ class DbusMonitor(object):
 					# org.freedesktop.DBus.Error.UnknownMethod
 					logger.debug("%s %s does not exist (yet)" % (serviceName, path))
 					value = None
-
-				service_id_dict['paths'][path] = [unwrap_dbus_value(value), options]
+				self.serviceIds[serviceId]['paths'][path] = [unwrap_dbus_value(value), options]
 
 				if options['whenToLog']:
 					service[options['whenToLog']].append(path)
 
 				logger.debug("    Added %s%s" % (serviceName, path))
-
-			service['match'] = self.dbusConn.add_signal_receiver(self.handler_value_changes,
-				dbus_interface='com.victronenergy.BusItem', signal_name='PropertiesChanged', path_keyword='path',
-				sender_keyword='senderId', bus_name=serviceName)
 
 			logger.debug("Finished scanning and storing items for %s" % serviceName)
 
@@ -183,8 +182,11 @@ class DbusMonitor(object):
 		return True
 
 	def handler_value_changes(self, changes, path, senderId):
-		a = self.serviceIds[senderId]['paths'].get(path, None)
-		if not a:
+		try:
+			a = self.serviceIds[senderId]['paths'][path]
+		except KeyError:
+			# Either senderId or path isn't there, which means
+			# it hasn't been scanned yet.
 			return
 
 		# First update our store to the new value
